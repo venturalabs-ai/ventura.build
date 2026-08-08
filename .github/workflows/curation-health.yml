@@ -1,0 +1,112 @@
+name: Ventura Curation Health
+
+on:
+  workflow_call:
+    inputs:
+      require_upstream:
+        description: Require README upstream/reference attribution
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  curation-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate curation provenance and external-link freshness
+        env:
+          REQUIRE_UPSTREAM: ${{ inputs.require_upstream }}
+        shell: python
+        run: |
+          from __future__ import annotations
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          readme = Path("README.md")
+          license_files = list(Path(".").glob("LICENSE*"))
+          errors = []
+          warnings = []
+          results = []
+
+          if not readme.exists() or not readme.read_text(encoding="utf-8").strip():
+              errors.append("README.md is missing or empty")
+              text = ""
+          else:
+              text = readme.read_text(encoding="utf-8")
+              lowered = text.lower()
+              if "curation" not in lowered and "curadoria" not in lowered and "reference" not in lowered:
+                  errors.append("README must identify the repository as curation/reference content")
+              if os.getenv("REQUIRE_UPSTREAM", "true").lower() == "true":
+                  if not any(marker in lowered for marker in ("upstream", "referência upstream", "referencia upstream", "fonte")):
+                      errors.append("README must document upstream/reference provenance")
+
+          if not license_files:
+              errors.append("LICENSE file is required")
+
+          urls = sorted(set(re.findall(r"https?://[^\s)>'\"]+", text)))
+          urls = [url.rstrip(".,;:") for url in urls]
+          insecure = [url for url in urls if url.startswith("http://")]
+          if insecure:
+              errors.extend(f"insecure external URL: {url}" for url in insecure)
+
+          for url in urls[:100]:
+              if any(host in url for host in ("img.shields.io/", "shields.io/")):
+                  continue
+              request = urllib.request.Request(
+                  url,
+                  headers={"User-Agent": "VenturaLabs-CurationHealth/1.0"},
+                  method="HEAD",
+              )
+              status = None
+              note = ""
+              try:
+                  with urllib.request.urlopen(request, timeout=12) as response:
+                      status = response.status
+              except urllib.error.HTTPError as exc:
+                  status = exc.code
+                  if exc.code in {403, 405, 429}:
+                      note = "reachable but automated HEAD restricted"
+                      warnings.append(f"{url}: HTTP {exc.code} ({note})")
+                  elif exc.code in {404, 410}:
+                      errors.append(f"broken external URL: {url} (HTTP {exc.code})")
+                  else:
+                      warnings.append(f"{url}: HTTP {exc.code}")
+              except Exception as exc:
+                  note = f"network validation unavailable: {type(exc).__name__}"
+                  warnings.append(f"{url}: {note}")
+              results.append({"url": url, "status": status, "note": note})
+
+          Path("curation-health.json").write_text(
+              json.dumps({"urls": results, "errors": errors, "warnings": warnings}, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+
+          for warning in warnings:
+              print(f"::warning::{warning}")
+          if errors:
+              print("Curation health failed:")
+              for error in errors:
+                  print(f"- {error}")
+              raise SystemExit(1)
+          print(f"Validated {len(results)} external link(s); warnings={len(warnings)}")
+
+      - name: Upload curation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: curation-health-${{ github.repository_id }}-${{ github.run_id }}
+          path: curation-health.json
+          if-no-files-found: error
+          retention-days: 30
