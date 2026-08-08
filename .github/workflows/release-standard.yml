@@ -1,0 +1,88 @@
+name: Ventura Reproducible Release
+
+on:
+  workflow_call:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require SemVer tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" != "tag" || ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release workflow requires a SemVer tag such as v1.2.3"
+            exit 1
+          fi
+
+      - name: Checkout tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify tag resolves to checked out commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
+
+      - name: Build source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/release"
+          git archive \
+            --format=tar.gz \
+            --prefix="${GITHUB_REPOSITORY#*/}-${GITHUB_REF_NAME}/" \
+            --output="${RUNNER_TEMP}/release/${GITHUB_REPOSITORY#*/}-${GITHUB_REF_NAME}.tar.gz" \
+            HEAD
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .
+          format: spdx-json
+          output-file: ${{ runner.temp }}/release/sbom.spdx.json
+
+      - name: Generate release evidence and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "${RUNNER_TEMP}/release/RELEASE-EVIDENCE.json" <<EOF
+          {
+            "repository": "${GITHUB_REPOSITORY}",
+            "tag": "${GITHUB_REF_NAME}",
+            "commit": "$(git rev-parse HEAD)",
+            "commit_url": "https://github.com/${GITHUB_REPOSITORY}/commit/$(git rev-parse HEAD)",
+            "workflow_run": "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          }
+          EOF
+          cd "${RUNNER_TEMP}/release"
+          sha256sum -- * > SHA256SUMS
+          sha256sum -c SHA256SUMS
+
+      - name: Upload immutable release evidence artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ github.ref_name }}
+          path: ${{ runner.temp }}/release
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            "${RUNNER_TEMP}/release/"* \
+            --verify-tag \
+            --generate-notes \
+            --title "${GITHUB_REF_NAME}"
