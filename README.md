@@ -2,56 +2,76 @@
 
 ![Status](https://img.shields.io/badge/status-engineering%20platform-blueviolet)
 ![License](https://img.shields.io/github/license/venturalabs-ai/ventura.build)
-![Stars](https://img.shields.io/github/stars/venturalabs-ai/ventura.build)
 
-**Plataforma compartilhada de engenharia do ecossistema Ventura, com workflows reutilizáveis de higiene, segurança, SBOM e validação de skills, além de trilhas educacionais “build it yourself”.**
+**Plataforma compartilhada de engenharia e governança do ecossistema Ventura Labs AI.**
 
-## Classificação
+## Papel no ecossistema
 
-**Engineering Platform + Curation / Skill Repository.** Este repositório mantém o baseline compartilhado de segurança e governança consumido por outros repositórios Ventura e também organiza trilhas educacionais próprias.
+`ventura.build` centraliza controles reutilizáveis para evitar que cada repositório replique lógica de segurança, CI, release e autonomia.
 
-O workflow reutilizável `.github/workflows/repo-standard.yml` é um **Repository Security Baseline**. Ele não substitui testes funcionais específicos de cada projeto e não deve, isoladamente, ser apresentado como evidência de que uma aplicação é production-grade.
+A plataforma distingue explicitamente:
 
-## Baseline compartilhado
+- **Repository Security Baseline** — higiene, integridade, Actions, Skills, conectores, Trivy e SBOM;
+- **Autonomy Gate** — política de execução, refs imutáveis e rejeição de testes meramente decorativos;
+- **Curation Health** — proveniência e freshness de links para repositórios curatoriais;
+- **Release Standard** — evidência de release SemVer, SBOM e checksums;
+- **Failure Issue Template** — criação/deduplicação automática de Issues quando workflows falham.
 
-O baseline central executa, quando aplicável:
+Nenhum baseline compartilhado substitui testes funcionais específicos do domínio.
 
-- higiene básica do repositório;
-- validação estrutural de Agent Skills e manifestos de conectores;
+## Workflows reutilizáveis
+
+### Repository Security Baseline
+
+`.github/workflows/repo-standard.yml`
+
+Executa, quando aplicável:
+
+- higiene e integridade estrutural;
+- auditoria de GitHub Actions;
+- validação de Agent Skills e manifestos de conectores;
 - Trivy bloqueante para vulnerabilidades corrigíveis HIGH/CRITICAL;
-- upload SARIF;
-- geração e retenção de SBOM SPDX.
+- SARIF;
+- SBOM SPDX.
 
-Projetos executáveis continuam responsáveis por seus próprios gates de lint, testes, coverage, integração, build, performance e outros controles específicos do domínio.
+### Ventura Autonomy Gate
 
-## Referência upstream
+`.github/workflows/autonomy-gate.yml`
 
-A parte educacional é inspirada por coleções públicas como `build-your-own-x`. Consulte projetos e tutoriais originais para conteúdo upstream e respeite suas licenças.
+Adiciona controles para agentes autônomos:
 
-## Trilhas
+- proíbe referências mutáveis de Actions/reusable workflows;
+- rejeita o scaffold de teste estrutural que não prova comportamento;
+- exige README/licença e `git diff --check`;
+- pode executar o comando de testes Python do consumidor.
 
-- servidores e protocolos;
-- bancos de dados;
-- interpretadores e compiladores;
-- shells e ferramentas CLI;
-- controle de versão;
-- frameworks;
-- jogos e sistemas básicos.
+### Autonomous Failure Issue
+
+`templates/ci-failure-issue.yml`
+
+Template para cada repositório criar ou atualizar uma única Issue de falha de CI por workflow, evitando spam e transformando falhas em backlog operacional rastreável.
+
+## Princípios de autonomia
+
+1. **tool-first** — ferramenta determinística antes de LLM;
+2. **least privilege** — permissões mínimas por workflow;
+3. **immutable supply chain** — Actions pinadas por SHA completa;
+4. **functional evidence** — teste deve provar comportamento relevante;
+5. **fail closed** — erro de segurança ou validação bloqueia promoção;
+6. **deduplicated feedback** — falhas viram Issues atualizáveis, não ruído;
+7. **budget-aware agents** — custo e tokens pertencem ao control plane do `ventura.system`;
+8. **no fictitious required checks** — somente checks existentes e verdes devem virar proteção obrigatória.
+
+## Curadoria e proveniência
+
+A parte educacional continua inspirada por coleções públicas como `build-your-own-x`. Materiais externos mantêm suas próprias licenças; o repositório deve registrar proveniência e não reproduzir conteúdo protegido sem permissão.
 
 ## Método Ventura
 
-`EXPLORE → COMPILE → REPLAY → REGENERATE`
+`EXPLORE → COMPILE → CONSTRAINED REPLAY → REGENERATE`
 
-Cada construção deve começar com uma versão mínima funcional, testes e etapas verificáveis.
-
-## Boas práticas
-
-- não copiar código upstream sem respeitar licença;
-- documentar decisões próprias;
-- comparar resultados com referências públicas;
-- manter cada etapa executável;
-- separar claramente baseline de repositório de quality gates específicos do produto.
+Caminhos validados devem virar workflows, testes ou Skills reutilizáveis; mudanças reais de requisito ou evidência acionam nova exploração.
 
 ## Licença
 
-Consulte [LICENSE](LICENSE). Materiais externos mantêm suas próprias licenças.
+Consulte [LICENSE](LICENSE).
