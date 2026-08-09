@@ -3,6 +3,11 @@ name: Ventura Autonomy Gate
 on:
   workflow_call:
     inputs:
+      require_profile:
+        description: Require and validate .ventura/repo-profile.json
+        required: false
+        type: boolean
+        default: true
       run_python_tests:
         description: Run repository-specific Python tests after policy checks
         required: false
@@ -12,7 +17,7 @@ on:
         description: Python test command used when run_python_tests is true
         required: false
         type: string
-        default: python -m pytest -q
+        default: python -m unittest discover -s tests -v
 
 permissions:
   contents: read
@@ -65,6 +70,64 @@ jobs:
               print('\n'.join(errors))
               sys.exit(1)
           print('All external GitHub Actions/reusable workflows are pinned to full SHAs.')
+
+      - name: Validate repository control profile
+        if: ${{ inputs.require_profile }}
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          import sys
+
+          roles = {
+              'orchestrator', 'engineering_platform', 'security', 'agent_catalog',
+              'provider_catalog', 'shared_sdk', 'optimizer', 'roadmap', 'knowledge',
+              'discovery', 'curation', 'domain_product', 'experimental_domain'
+          }
+          budgets = {'simple', 'normal', 'critical'}
+          context_strategies = {'semantic_ast', 'semantic', 'diff_first'}
+          autonomy = {'high', 'guarded', 'curation'}
+          path = Path('.ventura/repo-profile.json')
+          errors = []
+          if not path.is_file():
+              errors.append('missing .ventura/repo-profile.json')
+              data = {}
+          else:
+              try:
+                  data = json.loads(path.read_text(encoding='utf-8'))
+              except Exception as exc:
+                  errors.append(f'invalid repository profile: {exc}')
+                  data = {}
+          if data.get('schema_version') != 1:
+              errors.append('schema_version must be 1')
+          if data.get('repository_role') not in roles:
+              errors.append('invalid repository_role')
+          if data.get('autonomy') not in autonomy:
+              errors.append('invalid autonomy')
+          if data.get('budget_profile') not in budgets:
+              errors.append('invalid budget_profile')
+          context = data.get('context') or {}
+          if context.get('strategy') not in context_strategies:
+              errors.append('invalid context.strategy')
+          if not isinstance(context.get('max_files'), int) or not 1 <= context.get('max_files', 0) <= 50:
+              errors.append('context.max_files must be 1..50')
+          if not isinstance(context.get('max_chars'), int) or not 1000 <= context.get('max_chars', 0) <= 100000:
+              errors.append('context.max_chars must be 1000..100000')
+          routing = data.get('routing') or {}
+          if not isinstance(routing.get('enabled'), bool):
+              errors.append('routing.enabled must be boolean')
+          if not isinstance(routing.get('champion_challenger'), bool):
+              errors.append('routing.champion_challenger must be boolean')
+          required = (data.get('validation') or {}).get('required')
+          if not isinstance(required, list) or not required or not all(isinstance(v, str) and v for v in required):
+              errors.append('validation.required must be a non-empty string list')
+          hard_gates = (data.get('security') or {}).get('hard_gates')
+          if not isinstance(hard_gates, list) or not hard_gates or not all(isinstance(v, str) and v for v in hard_gates):
+              errors.append('security.hard_gates must be a non-empty string list')
+          if errors:
+              print('\n'.join(f'PROFILE ERROR: {error}' for error in errors))
+              sys.exit(1)
+          print(f"PROFILE OK: role={data['repository_role']} budget={data['budget_profile']} context={context['strategy']}")
 
       - name: Validate repository evidence
         shell: bash
