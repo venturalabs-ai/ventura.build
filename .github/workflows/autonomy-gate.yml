@@ -1,0 +1,90 @@
+name: Ventura Autonomy Gate
+
+on:
+  workflow_call:
+    inputs:
+      run_python_tests:
+        description: Run repository-specific Python tests after policy checks
+        required: false
+        type: boolean
+        default: false
+      test_command:
+        description: Python test command used when run_python_tests is true
+        required: false
+        type: string
+        default: python -m pytest -q
+
+permissions:
+  contents: read
+
+jobs:
+  autonomy-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Reject decorative test scaffolds
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -n --exclude-dir=.git --exclude='*.md' 'Adicione mais validações específicas aqui' tests 2>/dev/null; then
+            echo '::error::Decorative structure-only scaffold detected. Replace it with domain behavior tests.'
+            exit 1
+          fi
+
+      - name: Require immutable GitHub Action refs
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          import sys
+
+          root = Path('.github/workflows')
+          errors = []
+          pattern = re.compile(r'^\s*-?\s*uses:\s*([^\s#]+)')
+          sha = re.compile(r'^[0-9a-fA-F]{40}$')
+          if root.exists():
+              for path in sorted(list(root.glob('*.yml')) + list(root.glob('*.yaml'))):
+                  for line_no, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                      match = pattern.match(line)
+                      if not match:
+                          continue
+                      target = match.group(1)
+                      if target.startswith('./') or target.startswith('docker://'):
+                          continue
+                      if '@' not in target:
+                          errors.append(f'{path}:{line_no}: action without ref: {target}')
+                          continue
+                      ref = target.rsplit('@', 1)[1]
+                      if not sha.fullmatch(ref):
+                          errors.append(f'{path}:{line_no}: non-immutable ref: {target}')
+          if errors:
+              print('\n'.join(errors))
+              sys.exit(1)
+          print('All external GitHub Actions/reusable workflows are pinned to full SHAs.')
+
+      - name: Validate repository evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s README.md
+          find . -maxdepth 1 -type f -iname 'LICENSE*' -print -quit | grep -q .
+          git diff --check
+
+  python-tests:
+    if: ${{ inputs.run_python_tests }}
+    needs: autonomy-policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+      - name: Run repository tests
+        shell: bash
+        run: ${{ inputs.test_command }}
