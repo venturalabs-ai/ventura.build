@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "repository_role": "engineering_platform",
+  "autonomy": "guarded",
+  "budget_profile": "simple",
+  "context": {
+    "strategy": "diff_first",
+    "max_files": 20,
+    "max_chars": 24000
+  },
+  "routing": {
+    "enabled": false,
+    "champion_challenger": false
+  },
+  "validation": {
+    "required": ["platform-tests", "repository-health", "security-baseline"]
+  },
+  "security": {
+    "hard_gates": [
+      "delete_repository",
+      "force_push",
+      "change_secrets",
+      "reduce_security",
+      "destructive_deployment",
+      "budget_override",
+      "irreversible_financial_action"
+    ]
+  }
+}
