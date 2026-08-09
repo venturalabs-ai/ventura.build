@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "ventura.build"
+type: software
+authors:
+  - family-names: "Mota de Oliveira"
+    given-names: "Wemerson"
+    alias: "Ventura"
+license: EPL-2.0
+repository-code: "https://github.com/venturalabs-ai/ventura.build"
+url: "https://github.com/venturalabs-ai/ventura.build"
+date-released: 2026-08-09
