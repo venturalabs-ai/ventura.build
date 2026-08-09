@@ -1,5 +1,7 @@
 from pathlib import Path
 import re
+import subprocess
+import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +16,7 @@ class PlatformTests(unittest.TestCase):
         self.assertIn("workflow_call:", text)
         self.assertIn("Reject decorative test scaffolds", text)
         self.assertIn("Require immutable GitHub Action refs", text)
+        self.assertIn("Validate repository control profile", text)
 
     def test_external_actions_are_immutable(self):
         failures = []
@@ -41,6 +44,16 @@ class PlatformTests(unittest.TestCase):
         self.assertIn("actions: write", text)
         self.assertIn("run_attempt < 2", text)
         self.assertIn("rerun-failed-jobs", text)
+
+    def test_repository_profile_is_valid(self):
+        result = subprocess.run(
+            [sys.executable, "scripts/validate_repo_profile.py", ".ventura/repo-profile.json"],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":
